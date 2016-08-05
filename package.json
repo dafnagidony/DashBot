@@ -1,0 +1,24 @@
+{
+  "name": "dash-bot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "body-parser": "^1.15.2",
+    "cheerio": "^0.20.0",
+    "express": "^4.14.0",
+    "http": "0.0.0",
+    "mustache": "^2.2.1",
+    "request": "^2.74.0",
+    "request-promise": "^4.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^1.10.0"
+  }
+}
