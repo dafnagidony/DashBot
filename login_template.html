@@ -1,0 +1,15 @@
+<h1>Login to Outbrain:</h1>
+<form  action="/outbrain_login" method="post">
+	<input type="hidden" name="submitted" value="true">
+  <input type="hidden" name="csrf" value={{csrf}} >
+  <div class="form-focus login-fields">
+    
+      <label for="signin-member-username">
+       Username or Email
+      </label><input id="signin-member-username" name="loginUsername" type="text" class="input-text" value="">
+      <label for="signin-member-password">Password</label>
+      <input id="signin-member-password" name="loginPassword" type="password" class="input-text" value="">
+    
+      <input type="submit" value="Submit">
+  </div>
+</form>

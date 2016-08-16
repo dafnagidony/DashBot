@@ -3,22 +3,18 @@ var http = require('http');
 var express = require('express');
 var app = express();
 var bodyParser = require('body-parser');
-var cheerio = require('cheerio');
-var Mustache = require('mustache');
+var path    = require('path');
+var cache = require('memory-cache');
 var utils = require('./utils');
-var loginHtml = require('./login_template');
+var api = require('./api');
 
 app.use(bodyParser.urlencoded({
     extended: true
 }));
 app.use(bodyParser.json());
 
-app.get('/', function (req, res) {
-  res.send('Hello World!');
-});
-
-
 app.get('/webhook', function(req, res) {
+  console.log('^^^^^^^^^', req.query);
   if (req.query['hub.mode'] === 'subscribe' &&
       req.query['hub.verify_token'] === process.env.VALIDATION_TOKEN) {
     console.log("Validating webhook");
@@ -31,6 +27,7 @@ app.get('/webhook', function(req, res) {
 
 app.post('/webhook', function (req, res) {
   var data = req.body;
+  console.log('&&&&&&&&&&&&&&&&&&&&&&&&&&&');
   // Make sure this is a page subscription
   if (data.object == 'page') {
     // Iterate over each entry
@@ -66,49 +63,38 @@ app.post('/webhook', function (req, res) {
 });
 
 app.get('/authorize', function (req, res) {
-	console.log('&&&&&', req.query);
-	var options = {
-    uri: 'https://my.outbrain.com/login',
-    transform: function (body) {
-        return cheerio.load(body);
-    }
-	};
-	request(options)
-    .then(function ($) {
-        var csrf_code = $('input[name="csrf"]').prop('value');
-        var output = Mustache.render(loginHtml, {csrf: csrf_code});
-        res.send(output);
-   //   var login_template = $.html();
-    //  var form_action = $('form').attr('action');
-    //  $('form').attr('action', '/outbrain_login');
-    //  res.send($.html());
-    });
+  console.log('******', req.query);
+  cache.put('account_linking_token', req.query.account_linking_token);
+  cache.put('redirect_uri', req.query.redirect_uri);
+  res.sendFile(path.join(__dirname+'/login_template.html'));
 });
 
-
 app.post('/outbrain_login', function(req, res) {
-	var options = {
-		method: 'POST',
-    uri: "https://my.outbrain.com/login",
-    form: req.body,
+  var authCode = new Buffer(req.body.loginUsername+":"+req.body.loginPassword).toString('base64');
+  var options = {
+    url: "https://api.outbrain.com/amplify/v0.1/login",
     headers: {
-         'content-type': 'application/x-www-form-urlencoded'
-    },
-    transform: function (body) {
-        return cheerio.load(body);
+      'Authorization': 'Basic ' + authCode,
+      'Content-Length':0
     }
-	};
-	console.log('~~~~~~~', options);
-	request(options)
-    .then(function ($) {
-
-    	console.log($('div[class="msg-error"]').html());
-  		console.log($('div[class="error-message"]').html());
-  
-  //  	console.log($('form[id="signin-member"]').html());
- //   console.log($.html());
-    	res.send($.html());
+  };
+  request(options)
+  .then(function(resp) {
+    cache.put('obToken', resp);
+    obToken = resp;
+    console.log('(((&&&&&', resp);
+    api.getMarketers(obToken).then(function(accounts) {
+      console.log('--------', accounts);
+      cache.put('authorization_code', 'ZWI3NDYyYjc1MjViNW5MTNiNWM4NQ0ZTViZTZ');
+      var redirectPath = cache.get('redirect_uri')+ '&authorization_code='+cache.get('authorization_code');
+      res.redirect(redirectPath);    
     });
+    
+  })
+  .catch(function(err) {
+    res.sendFile(path.join(__dirname+'/login_template_error.html'));
+  });
+
 });
 
 app.listen(3000, function () {
