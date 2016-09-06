@@ -28,10 +28,10 @@ module.exports.getBudgets = function(marketerId) {
  * @returns {object} Returns a promise.
  * @public
  */
-module.exports.getCampaigns = function(marketerId, includeArchived, fetch) {
+module.exports.getCampaigns = function(obToken, marketerId, includeArchived, fetch) {
   includeArchived = includeArchived || false;
   fetch = fetch || 'all';
-  return requestHelper({url: `/marketers/${marketerId}/campaigns`, qs: {includeArchived, fetch}});
+  return requestHelper({url: `/marketers/${marketerId}/campaigns`, qs: {includeArchived, fetch}, obToken: obToken});
 };
 
 /**
@@ -45,10 +45,10 @@ module.exports.getCampaigns = function(marketerId, includeArchived, fetch) {
  * @returns {object} Returns a promise.
  * @public
  */
-module.exports.getPerformanceByDay = function getPerformanceByDay(campaignId, params) {
+module.exports.getPerformanceByDay = function getPerformanceByDay(obToken, campaignId, params) {
   params.limit = params.limit || 10;
   params.sort = params.sort || '+date';
-  return requestHelper({url: `/campaigns/${campaignId}/performanceByDay`, qs: params});
+  return requestHelper({url: `/campaigns/${campaignId}/performanceByDay`, qs: params, obToken: obToken});
 };
 
 /**

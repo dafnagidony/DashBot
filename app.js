@@ -13,6 +13,10 @@ app.use(bodyParser.urlencoded({
 }));
 app.use(bodyParser.json());
 
+if (cache.get('action') == null) {
+  cache.put('action', 'welcome');
+}
+
 app.get('/webhook', function(req, res) {
   console.log('^^^^^^^^^', req.query);
   if (req.query['hub.mode'] === 'subscribe' &&
@@ -27,7 +31,6 @@ app.get('/webhook', function(req, res) {
 
 app.post('/webhook', function (req, res) {
   var data = req.body;
-  console.log('&&&&&&&&&&&&&&&&&&&&&&&&&&&');
   // Make sure this is a page subscription
   if (data.object == 'page') {
     // Iterate over each entry
@@ -38,6 +41,7 @@ app.post('/webhook', function (req, res) {
 
       // Iterate over each messaging event
       pageEntry.messaging.forEach(function(messagingEvent) {
+        console.log('&&&&&&&&&&&&&&&&&&&&&&&&&&&', messagingEvent);
         if (messagingEvent.optin) {
           receivedAuthentication(messagingEvent);
         } else if (messagingEvent.message) {
@@ -46,6 +50,8 @@ app.post('/webhook', function (req, res) {
           utils.receivedDeliveryConfirmation(messagingEvent);
         } else if (messagingEvent.postback) {
           utils.receivedPostback(messagingEvent);
+        } else if (messagingEvent.account_linking) {
+          utils.receivedAccountLinking(messagingEvent);
         } else {
           console.log("Webhook received unknown messagingEvent: ", messagingEvent);
         }
@@ -83,13 +89,9 @@ app.post('/outbrain_login', function(req, res) {
     cache.put('obToken', resp);
     obToken = resp;
     console.log('(((&&&&&', resp);
-    api.getMarketers(obToken).then(function(accounts) {
-      console.log('--------', accounts);
-      cache.put('authorization_code', 'ZWI3NDYyYjc1MjViNW5MTNiNWM4NQ0ZTViZTZ');
-      var redirectPath = cache.get('redirect_uri')+ '&authorization_code='+cache.get('authorization_code');
-      res.redirect(redirectPath);    
-    });
-    
+    cache.put('authorization_code', 'ZWI3NDYyYjc1MjViNW5MTNiNWM4NQ0ZTViZTZ');
+    var redirectPath = cache.get('redirect_uri')+ '&authorization_code='+cache.get('authorization_code');
+    res.redirect(redirectPath);    
   })
   .catch(function(err) {
     res.sendFile(path.join(__dirname+'/login_template_error.html'));
@@ -97,6 +99,7 @@ app.post('/outbrain_login', function(req, res) {
 
 });
 
-app.listen(3000, function () {
-  console.log('Example app listening on port 3000!');
-});
+
+ app.listen(3000, function () {
+   console.log('Example app listening on port 3000!');
+ });
