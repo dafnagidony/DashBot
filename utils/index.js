@@ -1,8 +1,15 @@
 var request = require('request-promise');
 var cache = require('memory-cache');
 var moment = require('moment');
+var cheerio = require('cheerio');
 var api = require('../api');
 var charts = require('./charts');
+var store = require('./store');
+var utils = require('obil-utils');
+var obilUtils = require('obil-server').utils;
+var Promise = obilUtils.core.promise;
+var deferred = obilUtils.core.defer;
+var j = request.jar();
 
 module.exports.receivedMessage = function(event){
   var senderID = event.sender.id;
@@ -27,6 +34,7 @@ module.exports.receivedMessage = function(event){
       cache.put('date', message.text);
       sendSelectReportSelectMessage(senderID);
     } else if (message.quick_reply.payload.search("reportSelect") !== -1) {
+      console.log('$$$$$$$$$$$$$$$$', message.text);
       cache.put('report', message.text);
       if (message.text === 'Overview') {
         sendOverviewReport(senderID);
@@ -35,11 +43,9 @@ module.exports.receivedMessage = function(event){
       }
     }
   }
-
-  var messageId = message.mid;
-  var messageText = message.text;
-  var messageAttachments = message.attachments;
-
+  if (message.text === 'start') {
+    get_started_action(senderID);
+  }
 }
 
 
@@ -75,7 +81,7 @@ function sendTextMessage(recipientId, messageText) {
   return callSendAPI(messageData);
 }
 
-function sendButtonMessage (recipientId) {
+function sendButtonMessage (recipientId, payload) {
   var messageData = {
     recipient: {
       id: recipientId
@@ -83,22 +89,13 @@ function sendButtonMessage (recipientId) {
     message: {
       attachment: {
         type: "template",
-        payload: {
-          template_type: "generic",
-          elements: [{
-
-            title: "*image*",
-            buttons: [{
-              type: "account_link",
-              url: process.env.APP_URL + "/authorize"
-            }]
-          }]
-        }
+        payload: payload
       }
     }
   };
   return callSendAPI(messageData);
 }
+
 
 function sendGenericMessage(recipientId, elements) {
    var messageData = {
@@ -144,7 +141,7 @@ function callSendAPI(messageData) {
    return Promise.resolve();
   })
   .catch(function(err) {
-    console.log("ERROR sent generic message", messageData);
+    console.log("ERROR sent generic message", err);
     return Promise.reject('error');
   });
 }
@@ -158,7 +155,9 @@ module.exports.receivedPostback = function(event) {
   var action = event.postback.payload;
   var actions = {
     "get_started": get_started_action,
-    "accountSettings": accountSettings_action
+    "accountSettings": accountSettings_action,
+    "showTrendline": sendTrendlineReport,
+    "showOverview": sendOverviewReport
   };
   console.log('+++++++ receivedPostback  ', event);
   actions[action](senderID);
@@ -257,7 +256,17 @@ function sendSelectCampaignMessage(senderID, account) {
     }
     var message = "Please select campaign:";
     cache.put('campaignLookup', campaignObj);
-    sendQuickReplies(senderID, message, quick_replies);
+    var elements = {   
+      title: "Select campaign:",
+      buttons: [{
+        type: "web_url",
+        url: "https://petersfancyapparel.com/classic_white_tshirt",
+        title: "View Item",
+        webview_height_ratio: "compact"
+      }]
+    };
+    sendGenericMessage(senderID, elements);
+    //sendQuickReplies(senderID, message, quick_replies);
   });
 }
 
@@ -322,40 +331,80 @@ function sendOverviewReport(senderID) {
   switch(date) {
     case "yesterday":
       fromDate = moment().subtract(1, 'days');
+      break;
     case "last week":
       fromDate = moment().subtract(7, 'days');
+      break;
     case "today":
       fromDate = moment();
+      break;
     case "month to date":
       fromDate = moment().subtract(30,'days');
+      break;
     case "campaign to date":
       fromDate = moment().subtract(30,'days');
+      break;
     //  fromDate = global.userFlowMap[message.from].campaigns[campaign_name].creationTime;
     default:
       fromDate = moment().subtract(1, 'days');
   }
   console.log('&&& date:   ', date, fromDate);
    var params = {from: fromDate.format('YYYY-MM-DD'), to: moment().format('YYYY-MM-DD')};
-   console.log('^^^^^^^', date, params);
    return api.getPerformanceByDay(obToken, campaignId, params).then(function(data) {
-     console.log('#####$$$', data);
+      var messageText = "Here's summary for " + cache.get('campaign') + ":" +
+        "\n cost: " + data.overallMetrics.cost + 
+        "\n cpa: " + data.overallMetrics.cpa + 
+        "\n ctr: " + data.overallMetrics.ctr + 
+        "\n cpa: " + data.overallMetrics.cpa + 
+        "\n clicks: " + data.overallMetrics.clicks + 
+        "\n impressions: " + data.overallMetrics.impressions;
+      sendTextMessage(senderID, messageText)
+       .then(function() {
+        chooseNextStep(senderID, 'overview');
+      });  
    });
+}
+
+function chooseNextStep(senderID, currentAction) {
+  var titles, payloads;
+ 
+  if (currentAction === 'overview') {
+    titles = ["Check Trendline", "Update budget"];
+    payloads = ["showTrendline", "updateBudget"];
+  } else if (currentAction === 'trendline') {
+    titles = ["Check Overview", "Update budget"];
+    payloads = ["showOverview", "updateBudget"];
+  }
+
+  var payload = {
+    "template_type":"button",
+    "text":"What do you want to do next?",
+    "buttons":[
+      {
+        "type":"postback",
+        "title": titles[0],
+        "payload": payloads[0]
+      },
+      {
+        "type":"postback",
+        "title": titles[1],
+        "payload": payloads[1]
+      }
+    ]
+  };
+  sendButtonMessage(senderID, payload);
 }
 
 function sendTrendlineReport(senderID) {
   var data = require('../data/weekly_performance.json');
   console.log('&&&&&&&', data.details);
-  sendImageMessage(senderID, charts.getLineChart(data.details));
+  sendImageMessage(senderID, charts.getLineChart(data.details))
+  .then(function() {
+    chooseNextStep(senderID, 'trendline');
+  });  
 }
 
-//     var text = "Here's summary for " + campaign_name +
-//      "\n cost: " + data.overallMetrics.cost + 
-//       "\n cpa: " + data.overallMetrics.cpa + 
-//       "\n ctr: " + data.overallMetrics.ctr + 
-//       "\n cpa: " + data.overallMetrics.cpa + 
-//       "\n clicks: " + data.overallMetrics.clicks + 
-//       "\n impressions: " + data.overallMetrics.impressions;
-// charts.getLineChart(require('../data/weekly_performance.json')
+
 
 function accountSettings_action(senderID) {
   var elements = {   
@@ -378,6 +427,110 @@ function accountSettings_action(senderID) {
 
 }
 
+function getMyOutbrain() {
+  var defer = deferred();
+  request({
+    url: 'https://my.outbrain.com/login',
+    jar: j,
+    transform: function (body) {
+      return cheerio.load(body);
+    }
+  })
+  .then(function($) {
+    var cookie_string = j.getCookieString('https://my.outbrain.com/login');
+    var csrf = $('input[name=csrf]').attr('value');
+    defer.resolve([cookie_string, csrf]);
+  })
+  .catch(function(err) {
+    defer.reject(err);
+  });
+  return defer.promise;
+}
+
+function isValidCookies(j) {
+  var cookies = j.getCookieString('https://my.outbrain.com/login').split(';');
+  var refCookies = ['JSESSIONID', 'obroute2', 'login', 'ob-session-token'];
+  cookies.forEach(function(element, index, array) {
+    var cookieName=element.split('=')[0].replace(/ /g,'');
+    var index = refCookies.indexOf(cookieName);
+    if (index !== -1) {
+      refCookies.splice(index, 1);
+    }
+  })
+  return refCookies.length === 0;
+}
+
+function postLogin(cookie_string, csrf, userName, userPassword) {
+  var defer = deferred();
+  request({
+    url: 'https://my.outbrain.com/login',
+    method: 'POST',
+    jar: j,
+    headers: {
+      'Host': 'my.outbrain.com',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Cookie': cookie_string,
+      'Origin': 'http://localhost:3000',
+      'Referer': 'https://my.outbrain.com/',
+      'Upgrade-Insecure-Requests': 1,
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36',
+    },
+    form: {
+      submitted: true,
+      csrf: csrf,
+      loginUsername: 'dgidony@outbrain.com',//userName,
+      loginPassword: 'Outbrain1234'//userPassword
+    },
+    json: true
+  })
+  .catch(function(res) {
+    if (res.statusCode == 302 && res.error == undefined) {
+      if (res.body == null && isValidCookies(j)) {
+        defer.resolve();
+      } else {
+        defer.reject('Unable to Login');
+      }
+    }
+    else {
+      defer.reject(res.error);
+    }   
+  })
+  return defer.promise;
+}
+
+module.exports.loginOutbrainAccount = function(userName, userPassword) {
+  getMyOutbrain()
+  .then(function(resp) {
+    postLogin(resp[0], resp[1], userName, userPassword)
+    .then(function() {
+      console.log('(((((success )))))');
+    })
+  })
+  .catch(function(err) {
+    console.log('[[[ERROR]]]]', err);
+  });
+
+}
+
+
+
+
+  // request(options)
+  // .then(function(resp) {
+  //   cache.put('obToken', resp);
+  //   obToken = resp;
+  //   console.log('(((&&&&&', resp);
+  //   cache.put('authorization_code', 'ZWI3NDYyYjc1MjViNW5MTNiNWM4NQ0ZTViZTZ');
+  //   var redirectPath = cache.get('redirect_uri')+ '&authorization_code='+cache.get('authorization_code');
+  //   res.redirect(redirectPath);    
+  // })
+  // .catch(function(err) {
+  //   res.sendFile(path.join(__dirname+'/templates/login_template_error.html'));
+  // });
+
+
+
 // curl -X POST -H "Content-Type: application/json" -d '{
 //   "setting_type":"greeting",
 //   "greeting":{
@@ -392,8 +545,8 @@ function accountSettings_action(senderID) {
 //     {
 //       "payload":"get_started"
 //     }
-//   ]
-// }' "https://graph.facebook.com/v2.6/me/thread_settings?access_token=EAAIP954xVOYBANLuF7I2BRcM1q1BGLFs7O8HMbXVJBIEK52ZBQ93RRz0rul4Mdo7FvS1O7RhkgO57LNxSJbprYYenUxIS0xhjmx5VzydZATK5ZATiZCJOv89vLQeIMaNwYoIz3XoGw15MHvrr1BKvkV6NCWOZBS6hpVefejniDgZDZD"      
+//   ]  
+// }' "https://graph.facebook.com/v2.6/me/thread_settings?access_token=EAAIP954xVOYBAPfYla8lhE4CDKRs6yIE54sdt9lZAtNPRZBqMAR6vOTDinb260VKdeLgGqgaAU5plndIxPdLmltiXaLnPOpsVRmZBrWJlTW6Qwkj4ZC589ZCGxnTnkelfO3DOB75RzDOGTMYNg6t1mcxzQ8MHG9Do1yQZBgY89GgZDZD"      
 
 // curl -X POST -H "Content-Type: application/json" -d '{
 //   "setting_type" : "call_to_actions",

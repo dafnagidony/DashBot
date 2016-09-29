@@ -11,6 +11,9 @@
   "license": "ISC",
   "dependencies": {
     "body-parser": "^1.15.2",
+    "cheerio": "^0.22.0",
+    "debug-logger": "^0.4.1",
+    "events": "^1.1.1",
     "express": "^4.14.0",
     "http": "0.0.0",
     "iconv": "^2.2.1",
@@ -18,6 +21,9 @@
     "memory-cache": "^0.1.6",
     "moment": "^2.14.1",
     "mustache": "^2.2.1",
+    "nohm": "^0.9.8",
+    "obil-server": "^0.4.0",
+    "obil-utils": "^0.5.0",
     "path": "^0.12.7",
     "quiche": "0.0.10",
     "request-promise": "^4.1.0"
